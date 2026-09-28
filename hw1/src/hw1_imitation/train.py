@@ -21,6 +21,7 @@ from hw1_imitation.data import (
 )
 from hw1_imitation.model import build_policy, PolicyType
 from hw1_imitation.evaluation import Logger
+from hw1_imitation.evaluation import evaluate_policy
 
 LOGDIR_PREFIX = "exp"
 
@@ -40,11 +41,11 @@ class TrainConfig:
     batch_size: int = 128
     lr: float = 3e-4
     weight_decay: float = 0.0
-    hidden_dims: tuple[int, ...] = (256, 256, 256)
+    hidden_dims: tuple[int, ...] = (512, 1024, 512, 512)
     # The number of epochs to train for.
-    num_epochs: int = 400
-    # How often to run evaluation, measured in training steps.
-    eval_interval: int = 10_000
+    num_epochs: int = 300
+    # How often to run evaluation, measured in epochs.
+    eval_interval: int = 25
     num_video_episodes: int = 5
     video_size: tuple[int, int] = (256, 256)
     # How often to log training metrics, measured in training steps.
@@ -118,6 +119,8 @@ def run_training(config: TrainConfig) -> None:
         hidden_dims=config.hidden_dims,
     ).to(device)
 
+    print(model.policy)    
+
     exp_name = f"seed_{config.seed}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     if config.exp_name is not None:
         exp_name += f"_{config.exp_name}"
@@ -127,7 +130,53 @@ def run_training(config: TrainConfig) -> None:
     )
     logger = Logger(log_dir)
 
-    ### TODO: PUT YOUR MAIN TRAINING LOOP HERE ###
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
+
+    evaluate_policy(
+        model=model,
+        normalizer=normalizer,
+        device=device,
+        chunk_size=config.chunk_size,
+        video_size=config.video_size,
+        num_video_episodes=config.num_video_episodes,
+        flow_num_steps=config.flow_num_steps,
+        step=0,
+        logger=logger,
+    )
+
+    for epoch in range(1, config.num_epochs + 1):
+
+        model.train()
+        total_loss = 0.0
+        for batch in loader:
+            batch = [b.to(device) for b in batch]
+
+            optimizer.zero_grad()
+
+            # The compute loss function takes in the state and does the forward pass
+            loss = model.compute_loss(batch[0], batch[1])
+            # print("loss:", loss)
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+        epoch_loss = total_loss / len(loader)
+        print(f"Epoch {epoch} done.  Loss: {epoch_loss}")
+
+        if epoch % config.eval_interval == 0:
+        
+            evaluate_policy(
+                model=model,
+                normalizer=normalizer,
+                device=device,
+                chunk_size=config.chunk_size,
+                video_size=config.video_size,
+                num_video_episodes=config.num_video_episodes,
+                flow_num_steps=config.flow_num_steps,
+                step=epoch,
+                logger=logger,
+            )
+
 
     logger.dump_for_grading()
 

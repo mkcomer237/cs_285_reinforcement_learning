@@ -47,12 +47,31 @@ class MSEPolicy(BasePolicy):
     ) -> None:
         super().__init__(state_dim, action_dim, chunk_size)
 
+        layers = []
+        input_dim = self.state_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            input_dim = hidden_dim
+        layers.append(nn.Linear(input_dim, self.action_dim * self.chunk_size))
+
+        self.policy = nn.Sequential(*layers)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        """Forward pass to predict action chunks."""
+        y = self.policy(state)
+        # print("y.shape:", y.shape)
+        return y.view(-1, self.chunk_size, self.action_dim)
+
     def compute_loss(
         self,
         state: torch.Tensor,
         action_chunk: torch.Tensor,
     ) -> torch.Tensor:
-        raise NotImplementedError
+        prediction_chunk = self(state)
+        loss_fn =nn.MSELoss()
+        loss = loss_fn(prediction_chunk, action_chunk)
+        return loss
 
     def sample_actions(
         self,
@@ -60,7 +79,10 @@ class MSEPolicy(BasePolicy):
         *,
         num_steps: int = 10,
     ) -> torch.Tensor:
-        raise NotImplementedError
+        # Output the policy generated action chunk for a given state
+        with torch.no_grad():
+            return self(state)
+
 
 
 class FlowMatchingPolicy(BasePolicy):
