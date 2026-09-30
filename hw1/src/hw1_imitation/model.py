@@ -98,12 +98,32 @@ class FlowMatchingPolicy(BasePolicy):
     ) -> None:
         super().__init__(state_dim, action_dim, chunk_size)
 
+        layers = []
+        input_dim = self.state_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            input_dim = hidden_dim
+        layers.append(nn.Linear(input_dim, self.action_dim * self.chunk_size))
+
+        self.policy = nn.Sequential(*layers)
+
     def compute_loss(
         self,
         state: torch.Tensor,
         action_chunk: torch.Tensor,
     ) -> torch.Tensor:
-        raise NotImplementedError
+        y = self.policy(state)
+        # Add noise? 
+        batch_size = state.shape[0]
+        print(f"Batch size: {batch_size}")
+        # Sample from a (0, 1) normal distribution for the full output size.  
+        # This must be combined with the true label (action chunk) and matches dims with that
+        noise = torch.randn(batch_size, self.chunk_size, self.action_dim) 
+        
+
+
+        return y.view(-1, self.chunk_size, self.action_dim)
 
     def sample_actions(
         self,
