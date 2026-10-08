@@ -99,7 +99,7 @@ class FlowMatchingPolicy(BasePolicy):
         super().__init__(state_dim, action_dim, chunk_size)
 
         layers = []
-        input_dim = self.state_dim
+        input_dim = self.chunk_size * self.action_dim + self.state_dim + + 1 # observed state, noisy action chunk, and tau  
         for hidden_dim in hidden_dims:
             layers.append(nn.Linear(input_dim, hidden_dim))
             layers.append(nn.ReLU())
@@ -113,15 +113,28 @@ class FlowMatchingPolicy(BasePolicy):
         state: torch.Tensor,
         action_chunk: torch.Tensor,
     ) -> torch.Tensor:
-        y = self.policy(state)
+        
         # Add noise? 
+        print(f"State shape: {state.shape}")
         batch_size = state.shape[0]
         print(f"Batch size: {batch_size}")
         # Sample from a (0, 1) normal distribution for the full output size.  
         # This must be combined with the true label (action chunk) and matches dims with that
-        noise = torch.randn(batch_size, self.chunk_size, self.action_dim) 
-        
-
+        tau = torch.rand(batch_size, 1, 1) # Randomly sample tau before interpolation.  Separate tau for each batch item.  
+        noise = torch.randn(batch_size, self.chunk_size, self.action_dim) # mean 0, std 1
+        print(f"Noise shape: {noise.shape}")
+        print(f"Tau shape: {tau.shape}")
+        print(f"Action chunk shape: {action_chunk.shape}")
+        interpolated_action_chunk = (1 - tau) * action_chunk + tau * noise
+        # Adding noise generates the training sample.  The original sample without noise is the target.
+        # Our policy should output a result with the same dimensiopns as the training sample At and noise
+        # Policy needs to take in tau, the interpolated action chunk -> noise, and the observed state Ot
+        reshaped_interpolated_action_chunk = interpolated_action_chunk.reshape(-1, self.action_dim*self.chunk_size)
+        print(f"Reshaped interpolated action chunk shape: {reshaped_interpolated_action_chunk.shape}")
+        X = torch.cat([reshaped_interpolated_action_chunk, state, tau.reshape(-1, 1)], dim=1)
+        print("X shape: ", X.shape)
+        y = self.policy(X)
+        print(f"y shape: {y.shape}")
 
         return y.view(-1, self.chunk_size, self.action_dim)
 
@@ -131,6 +144,7 @@ class FlowMatchingPolicy(BasePolicy):
         *,
         num_steps: int = 10,
     ) -> torch.Tensor:
+        # This is the inference step, we need to use the Euler integration to sequentially go through values of tau to get a trajectory towards a final denoised action chunk.
         raise NotImplementedError
 
 
