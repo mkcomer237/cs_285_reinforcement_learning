@@ -118,10 +118,10 @@ class FlowMatchingPolicy(BasePolicy):
         print(f"State shape: {state.shape}")
         batch_size = state.shape[0]
         print(f"Batch size: {batch_size}")
-        # Sample from a (0, 1) normal distribution for the full output size.  
+        # Sample from a (0, 1) normal distribution for the full output size.
         # This must be combined with the true label (action chunk) and matches dims with that
-        tau = torch.rand(batch_size, 1, 1) # Randomly sample tau before interpolation.  Separate tau for each batch item.  
-        noise = torch.randn(batch_size, self.chunk_size, self.action_dim) # mean 0, std 1
+        tau = torch.rand(batch_size, 1, 1).to(state.device) # Randomly sample tau before interpolation.  Separate tau for each batch item.
+        noise = torch.randn(batch_size, self.chunk_size, self.action_dim).to(state.device) # mean 0, std 1
         print(f"Noise shape: {noise.shape}")
         print(f"Tau shape: {tau.shape}")
         print(f"Action chunk shape: {action_chunk.shape}")
@@ -145,7 +145,23 @@ class FlowMatchingPolicy(BasePolicy):
         num_steps: int = 10,
     ) -> torch.Tensor:
         # This is the inference step, we need to use the Euler integration to sequentially go through values of tau to get a trajectory towards a final denoised action chunk.
-        raise NotImplementedError
+        # Iterate through values of tau and 
+        # Start off at full noise
+        print("State dim: ", state.shape)
+        tau = torch.zeros(1, 1, device=state.device) 
+        # Batch size is 1 effectively
+        noise = torch.randn(state.shape[0], self.chunk_size, self.action_dim).to(state.device) 
+
+        reshaped_noise = noise.reshape(-1, self.action_dim * self.chunk_size)
+        print("Reshaped noise dim: ", reshaped_noise.shape)
+        print("Noise dim: ", noise.shape)
+        X = torch.cat([reshaped_noise, state, tau.reshape(-1, 1)], dim=1)
+        print("X dim: ", X.shape)
+
+        raise NotImplementedError("Sampling is not implemented for this policy type.")
+        #while tau.item() <= 1.0:
+        #    self.policy()
+
 
 
 PolicyType: TypeAlias = Literal["mse", "flow"]
